@@ -1,0 +1,43 @@
+name: Telegram Publisher
+
+on:
+  workflow_dispatch:
+
+  schedule:
+    - cron: "0 */6 * * *"
+
+permissions:
+  contents: write
+
+jobs:
+
+  publish:
+
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run publisher
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+
+        run: |
+          python3 factory.py
+
+
+      - name: Save history
+
+        run: |
+
+          git config user.name "AI Factory"
+
+          git config user.email "actions@github.com"
+
+          git add data/published_topics.json
+
+          git commit -m "Update topics history" || exit 0
+
+          git push
