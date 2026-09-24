@@ -8,15 +8,25 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Send post to Telegram
+      - name: Send test message
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         run: |
-          curl -sS -X POST \
+          echo "Testing Telegram connection..."
+
+          RESPONSE=$(curl -sS -X POST \
             "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
             --data-urlencode "chat_id=@AIFactoryA" \
-            --data-urlencode "text=🤖 AI Content Factory — тестовая автоматическая публикация!
+            --data-urlencode "text=🤖 Тест AI Content Factory
 
-Это первое сообщение, опубликованное автоматически через GitHub Actions.
+GitHub Actions успешно подключился к Telegram.")
 
-Система Telegram → GitHub → Bot API работает ✅"
+          echo "Telegram response:"
+          echo "$RESPONSE"
+
+          if echo "$RESPONSE" | grep -q '"ok":true'; then
+            echo "SUCCESS: Telegram message sent."
+          else
+            echo "ERROR: Telegram rejected the request."
+            exit 1
+          fi
