@@ -1,32 +1,140 @@
-name: Telegram Publisher
+name: AI Content Factory
 
 on:
   workflow_dispatch:
 
 jobs:
-  publish:
+  generate-and-publish:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Send test message
+      - name: Generate AI post and publish to Telegram
         env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         run: |
-          echo "Testing Telegram connection..."
+          python3 <<'PY'
+          import os
+          import json
+          import urllib.request
+          import urllib.error
 
-          RESPONSE=$(curl -sS -X POST \
-            "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
-            --data-urlencode "chat_id=@AIFactoryA" \
-            --data-urlencode "text=🤖 Тест AI Content Factory
+          HF_TOKEN = os.environ["HF_TOKEN"]
+          TELEGRAM_BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 
-GitHub Actions успешно подключился к Telegram.")
+          prompt = """
+          Ты профессиональный редактор Telegram-канала про искусственный интеллект.
 
-          echo "Telegram response:"
-          echo "$RESPONSE"
+          Напиши полезный пост на русском языке.
 
-          if echo "$RESPONSE" | grep -q '"ok":true'; then
-            echo "SUCCESS: Telegram message sent."
-          else
-            echo "ERROR: Telegram rejected the request."
-            exit 1
-          fi
+          Тема:
+          5 способов использовать ИИ для экономии времени каждый день.
+
+          Требования:
+          - 700–1200 символов;
+          - конкретная практическая польза;
+          - 5 способов;
+          - для каждого способа короткий пример;
+          - простой и живой русский язык;
+          - без воды;
+          - без выдуманных фактов;
+          - в конце задай читателям вопрос;
+          - не говори, что текст создан ИИ.
+
+          Формат:
+          Заголовок
+          Короткое вступление
+          1–5 пунктов
+          Вопрос аудитории
+          """
+
+          data = json.dumps({
+              "model": "openai/gpt-oss-120b:fastest",
+              "messages": [
+                  {
+                      "role": "user",
+                      "content": prompt
+                  }
+              ],
+              "stream": False
+          }).encode("utf-8")
+
+          request = urllib.request.Request(
+              "https://router.huggingface.co/v1/chat/completions",
+              data=data,
+              headers={
+                  "Authorization": f"Bearer {HF_TOKEN}",
+                  "Content-Type": "application/json"
+              },
+              method="POST"
+          )
+
+          try:
+              with urllib.request.urlopen(request, timeout=120) as response:
+                  result = json.loads(
+                      response.read().decode("utf-8")
+                  )
+          except urllib.error.HTTPError as e:
+              print("HUGGING FACE ERROR:")
+              print(e.read().decode("utf-8"))
+              raise
+
+          try:
+              post = result["choices"][0]["message"]["content"].strip()
+          except (KeyError, IndexError, TypeError):
+              print("Unexpected Hugging Face response:")
+              print(json.dumps(result, ensure_ascii=False, indent=2))
+              raise SystemExit(1)
+
+          if not post:
+              print("ERROR: AI returned empty post")
+              raise SystemExit(1)
+
+          post = post[:4000]
+
+          print("========== GENERATED POST ==========")
+          print(post)
+          print("====================================")
+
+          telegram_data = json.dumps({
+              "chat_id": "@AIFactoryA",
+              "text": post
+          }).encode("utf-8")
+
+          telegram_request = urllib.request.Request(
+              f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
+              data=telegram_data,
+              headers={
+                  "Content-Type": "application/json"
+              },
+              method="POST"
+          )
+
+          try:
+              with urllib.request.urlopen(
+                  telegram_request,
+                  timeout=60
+              ) as response:
+                  telegram_result = json.loads(
+                      response.read().decode("utf-8")
+                  )
+          except urllib.error.HTTPError as e:
+              print("TELEGRAM ERROR:")
+              print(e.read().decode("utf-8"))
+              raise
+
+          print("Telegram response:")
+          print(
+              json.dumps(
+                  telegram_result,
+                  ensure_ascii=False,
+                  indent=2
+              )
+          )
+
+          if not telegram_result.get("ok"):
+              raise SystemExit(1)
+
+          print("SUCCESS!")
+          print("AI post successfully published to @AIFactoryA")
+          PY
