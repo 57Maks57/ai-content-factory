@@ -8,11 +8,18 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Send post to Telegram
+      - name: Send Telegram message
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         run: |
-          curl -sS -X POST \
-            "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
-            --data-urlencode "chat_id=@AIFactoryA" \
-            --data-urlencode "text=🤖 AI Content Factory — тестовая автоматическая публикация!
+          RESPONSE=$(curl -sS "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage?chat_id=%40AIFactoryA&text=AI%20Content%20Factory%20%E2%80%94%20%D1%82%D0%B5%D1%81%D1%82%20%D0%B0%D0%B2%D1%82%D0%BE%D0%BC%D0%B0%D1%82%D0%B8%D1%87%D0%B5%D1%81%D0%BA%D0%BE%D0%B9%20%D0%BF%D1%83%D0%B1%D0%BB%D0%B8%D0%BA%D0%B0%D1%86%D0%B8%D0%B8")
+          
+          echo "Telegram response:"
+          echo "$RESPONSE"
+
+          if echo "$RESPONSE" | grep -q '"ok":true'; then
+            echo "SUCCESS"
+          else
+            echo "TELEGRAM ERROR"
+            exit 1
+          fi
