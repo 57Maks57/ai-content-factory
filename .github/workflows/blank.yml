@@ -1,25 +1,125 @@
-name: Telegram Publisher
+name: AI Content Factory
 
 on:
   workflow_dispatch:
 
 jobs:
-  publish:
+  generate-and-publish:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Send Telegram message
+      - name: Generate AI post and publish to Telegram
         env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         run: |
-          RESPONSE=$(curl -sS "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage?chat_id=%40AIFactoryA&text=AI%20Content%20Factory%20%E2%80%94%20%D1%82%D0%B5%D1%81%D1%82%20%D0%B0%D0%B2%D1%82%D0%BE%D0%BC%D0%B0%D1%82%D0%B8%D1%87%D0%B5%D1%81%D0%BA%D0%BE%D0%B9%20%D0%BF%D1%83%D0%B1%D0%BB%D0%B8%D0%BA%D0%B0%D1%86%D0%B8%D0%B8")
-          
-          echo "Telegram response:"
-          echo "$RESPONSE"
+          python3 <<'PY'
+          import os
+          import json
+          import urllib.request
+          import urllib.error
 
-          if echo "$RESPONSE" | grep -q '"ok":true'; then
-            echo "SUCCESS"
-          else
-            echo "TELEGRAM ERROR"
-            exit 1
-          fi
+          OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]
+          TELEGRAM_BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
+
+          prompt = """
+          Ты — редактор Telegram-канала об искусственном интеллекте.
+
+          Создай один полезный пост на русском языке для аудитории,
+          которая хочет использовать ИИ для работы, бизнеса, заработка
+          и экономии времени.
+
+          Тема:
+          "5 способов использовать ИИ, чтобы экономить время каждый день"
+
+          Требования:
+          - практическая польза;
+          - конкретные примеры;
+          - без воды;
+          - понятный русский язык;
+          - структура с короткими абзацами;
+          - 700–1200 символов;
+          - в конце один вопрос аудитории;
+          - не упоминай, что текст написан ИИ;
+          - не используй Markdown-таблицы.
+          """
+
+          # Запрос к OpenAI Responses API
+          data = json.dumps({
+              "model": "gpt-5.6-luna",
+              "input": prompt
+          }).encode("utf-8")
+
+          request = urllib.request.Request(
+              "https://api.openai.com/v1/responses",
+              data=data,
+              headers={
+                  "Content-Type": "application/json",
+                  "Authorization": f"Bearer {OPENAI_API_KEY}"
+              },
+              method="POST"
+          )
+
+          try:
+              with urllib.request.urlopen(request) as response:
+                  result = json.loads(response.read().decode("utf-8"))
+          except urllib.error.HTTPError as e:
+              print("OpenAI ERROR:")
+              print(e.read().decode("utf-8"))
+              raise
+
+          # Извлекаем текст ответа
+          post = ""
+
+          if "output" in result:
+              for item in result["output"]:
+                  for content in item.get("content", []):
+                      if content.get("type") == "output_text":
+                          post += content.get("text", "")
+
+          post = post.strip()
+
+          if not post:
+              print("ERROR: OpenAI returned empty text")
+              print(json.dumps(result, ensure_ascii=False, indent=2))
+              raise SystemExit(1)
+
+          # Ограничение Telegram
+          post = post[:4000]
+
+          print("Generated post:")
+          print(post)
+
+          # Отправка в Telegram
+          telegram_data = json.dumps({
+              "chat_id": "@AIFactoryA",
+              "text": post
+          }).encode("utf-8")
+
+          telegram_request = urllib.request.Request(
+              f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
+              data=telegram_data,
+              headers={
+                  "Content-Type": "application/json"
+              },
+              method="POST"
+          )
+
+          try:
+              with urllib.request.urlopen(telegram_request) as response:
+                  telegram_result = json.loads(
+                      response.read().decode("utf-8")
+                  )
+          except urllib.error.HTTPError as e:
+              print("Telegram ERROR:")
+              print(e.read().decode("utf-8"))
+              raise
+
+          print("Telegram response:")
+          print(json.dumps(telegram_result, ensure_ascii=False, indent=2))
+
+          if not telegram_result.get("ok"):
+              raise SystemExit(1)
+
+          print("SUCCESS: AI post published to Telegram")
+          PY
