@@ -10,7 +10,7 @@ jobs:
     steps:
       - name: Generate AI post and publish to Telegram
         env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         run: |
           python3 <<'PY'
@@ -19,78 +19,83 @@ jobs:
           import urllib.request
           import urllib.error
 
-          OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]
+          HF_TOKEN = os.environ["HF_TOKEN"]
           TELEGRAM_BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 
           prompt = """
-          Ты — редактор Telegram-канала об искусственном интеллекте.
+          Ты профессиональный редактор Telegram-канала про искусственный интеллект.
 
-          Создай один полезный пост на русском языке для аудитории,
-          которая хочет использовать ИИ для работы, бизнеса, заработка
-          и экономии времени.
+          Напиши полезный пост на русском языке.
 
           Тема:
-          "5 способов использовать ИИ, чтобы экономить время каждый день"
+          5 способов использовать ИИ для экономии времени каждый день.
 
           Требования:
-          - практическая польза;
-          - конкретные примеры;
-          - без воды;
-          - понятный русский язык;
-          - структура с короткими абзацами;
           - 700–1200 символов;
-          - в конце один вопрос аудитории;
-          - не упоминай, что текст написан ИИ;
-          - не используй Markdown-таблицы.
+          - конкретная практическая польза;
+          - 5 способов;
+          - для каждого способа короткий пример;
+          - простой и живой русский язык;
+          - без воды;
+          - без выдуманных фактов;
+          - в конце задай читателям вопрос;
+          - не говори, что текст создан ИИ.
+
+          Формат:
+          Заголовок
+          Короткое вступление
+          1–5 пунктов
+          Вопрос аудитории
           """
 
-          # Запрос к OpenAI Responses API
           data = json.dumps({
-              "model": "gpt-5.6-luna",
-              "input": prompt
+              "model": "openai/gpt-oss-120b:fastest",
+              "messages": [
+                  {
+                      "role": "user",
+                      "content": prompt
+                  }
+              ],
+              "stream": False
           }).encode("utf-8")
 
           request = urllib.request.Request(
-              "https://api.openai.com/v1/responses",
+              "https://router.huggingface.co/v1/chat/completions",
               data=data,
               headers={
-                  "Content-Type": "application/json",
-                  "Authorization": f"Bearer {OPENAI_API_KEY}"
+                  "Authorization": f"Bearer {HF_TOKEN}",
+                  "Content-Type": "application/json"
               },
               method="POST"
           )
 
           try:
-              with urllib.request.urlopen(request) as response:
-                  result = json.loads(response.read().decode("utf-8"))
+              with urllib.request.urlopen(request, timeout=120) as response:
+                  result = json.loads(
+                      response.read().decode("utf-8")
+                  )
           except urllib.error.HTTPError as e:
-              print("OpenAI ERROR:")
+              print("HUGGING FACE ERROR:")
               print(e.read().decode("utf-8"))
               raise
 
-          # Извлекаем текст ответа
-          post = ""
-
-          if "output" in result:
-              for item in result["output"]:
-                  for content in item.get("content", []):
-                      if content.get("type") == "output_text":
-                          post += content.get("text", "")
-
-          post = post.strip()
-
-          if not post:
-              print("ERROR: OpenAI returned empty text")
+          try:
+              post = result["choices"][0]["message"]["content"].strip()
+          except (KeyError, IndexError, TypeError):
+              print("Unexpected Hugging Face response:")
               print(json.dumps(result, ensure_ascii=False, indent=2))
               raise SystemExit(1)
 
-          # Ограничение Telegram
+          if not post:
+              print("ERROR: AI returned empty post")
+              raise SystemExit(1)
+
           post = post[:4000]
 
-          print("Generated post:")
+          print("========== GENERATED POST ==========")
           print(post)
+          print("====================================")
 
-          # Отправка в Telegram
           telegram_data = json.dumps({
               "chat_id": "@AIFactoryA",
               "text": post
@@ -106,20 +111,30 @@ jobs:
           )
 
           try:
-              with urllib.request.urlopen(telegram_request) as response:
+              with urllib.request.urlopen(
+                  telegram_request,
+                  timeout=60
+              ) as response:
                   telegram_result = json.loads(
                       response.read().decode("utf-8")
                   )
           except urllib.error.HTTPError as e:
-              print("Telegram ERROR:")
+              print("TELEGRAM ERROR:")
               print(e.read().decode("utf-8"))
               raise
 
           print("Telegram response:")
-          print(json.dumps(telegram_result, ensure_ascii=False, indent=2))
+          print(
+              json.dumps(
+                  telegram_result,
+                  ensure_ascii=False,
+                  indent=2
+              )
+          )
 
           if not telegram_result.get("ok"):
               raise SystemExit(1)
 
-          print("SUCCESS: AI post published to Telegram")
+          print("SUCCESS!")
+          print("AI post successfully published to @AIFactoryA")
           PY
