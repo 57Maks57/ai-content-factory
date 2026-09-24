@@ -16,7 +16,3 @@ jobs:
             "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
             --data-urlencode "chat_id=@AIFactoryA" \
             --data-urlencode "text=🤖 AI Content Factory — тестовая автоматическая публикация!
-
-Это первое сообщение, опубликованное автоматически через GitHub Actions.
-
-Система Telegram → GitHub → Bot API работает ✅"
